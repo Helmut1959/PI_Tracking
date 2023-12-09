@@ -25,19 +25,25 @@ class GHFilter():
         return loc, dloc
 
 class ContourObj():
-    def __init__(self, loc, c):
+    def __init__(self, loc, c, red, green, blue):
         self.loc = loc
         self.color = c
         self.tag = False
+        self.red = red
+        self.green = green
+        self.blue = blue
 
 class TrackObj:
-    def __init__(self, id, loc, c):
+    def __init__(self, id, loc, c, red, green, blue):
         self.id = id
         self.loc = loc
         self.dloc = [0.,0.]
         self.color = c
         self.pred_loc = loc
         self.count = 0
+        self.red = red
+        self.green = green
+        self.blue = blue   
 
 def ProcessImage1(src):
     gray = cv.cvtColor(src, cv.COLOR_BGR2GRAY)
@@ -60,7 +66,7 @@ def ProcessImage2(src):
     dilated_image = cv.dilate(dst_gray, kernel, iterations=1)       
     return dilated_image
         
-def GetContour(src):
+def GetContour(src, frame):
     ContourList = []
     contours, hierarchy = cv.findContours(src, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
     for c in contours:
@@ -75,16 +81,16 @@ def GetContour(src):
         if (w > 20) and (h > 20) and (length < 1000):
             xMid = x + w / 2.
             yMid = y + h / 2.
-            color = np.array(cv.mean(src[y:y+h,x:x+w])).astype(np.uint8)
+            color = np.array(cv.mean(frame[y:y+h,x:x+w])).astype(np.uint8)
             colorSum = int(color[0]) + int(color[1]) + int(color[2])
             relBlue = int((color[0] / colorSum)*10)
             relGreen = int((color[1] / colorSum)*10)
             relRed = int((color[2] / colorSum)*10)
             if (relBlue >= 4) and (relGreen <= 3) and (relRed <= 2):
-                c_obj = ContourObj([xMid,yMid],0) # Blue
+                c_obj = ContourObj([xMid,yMid], "B", relRed, relGreen, relBlue) # Blue
                 ContourList.append(c_obj)
             elif (relBlue <= 2) and (relGreen <= 2) and (relRed >= 4):
-                c_obj = ContourObj([xMid,yMid],1) # Red
+                c_obj = ContourObj([xMid,yMid], "R", relRed, relGreen, relBlue) # Red
                 ContourList.append(c_obj)
     return  ContourList
 
@@ -135,7 +141,7 @@ def CompareObjects(ghf,ContourList, TrackList, use_ghf, id_counter):
         print("Distance C-T not working")
     for c in ContourList:
         if c.tag == False:      # new object
-            t_obj = TrackObj(id_counter,c.loc,c.color)
+            t_obj = TrackObj(id_counter,c.loc,c.color, c.red, c.green, c.blue)
             TrackList.append(t_obj)
             id_counter += 1
     # Check persistence of tracked object, drop after 25 consecutive failed detections
@@ -150,7 +156,7 @@ def propagate_tracks(ghf,TrackList):
 
 def InitTrackList(ContourList,TrackList,id_counter):
     for c in ContourList:
-        t_obj = TrackObj(id_counter,c.loc,c.color)
+        t_obj = TrackObj(id_counter,c.loc,c.color, c.red, c.green, c.blue)
         TrackList.append(t_obj)
         id_counter += 1
     return TrackList,id_counter
@@ -181,7 +187,7 @@ def main():
     camera, raw_capture = init_camera()   
     for frame in camera.capture_continuous(raw_capture, format="bgr", use_video_port=True):  
         outlines = ProcessImage1(frame.array)
-        ContourList = GetContour(outlines)
+        ContourList = GetContour(outlines, frame.array)
         ContourList = CleanList(ContourList,"C")
         if (len(TrackList)) > 0:
             propagate_tracks(ghf,TrackList)
@@ -191,9 +197,11 @@ def main():
         id_counter = CompareObjects(ghf,ContourList, TrackList,use_ghf, id_counter)
         for t in TrackList:
             coord = (int(t.loc[0]),int(t.loc[1]))
-            cv.putText(frame.array,str(t.id)+"_"+str(t.color),coord, font, 1,(0,255-t.count*25,50),2,cv.LINE_AA)                
-        #out_img = cv.resize(frame.array, (640,480), interpolation= cv.INTER_LINEAR) 
-        cv.imshow(source_window, frame.array)
+            #color = str(t.red)+" "+str(t.green)+" "+str(t.blue)
+            cv.putText(frame.array,str(t.color)+"_"+str(t.id),coord, font, 1,(0,255-t.count*25,50),2,cv.LINE_AA)                
+        out_img = cv.resize(frame.array, (1080,720), interpolation= cv.INTER_LINEAR) 
+        #cv.imshow(source_window, frame.array)
+        cv.imshow(source_window, out_img)
         frame.truncate(0)
         
         k = cv.waitKey(1) & 0xFF   
